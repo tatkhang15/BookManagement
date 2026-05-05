@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Book Management — Trang chủ</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body class="app-ready">
+
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="main-content">
+      <header class="top-header" id="top-header"></header>
+
+      <main class="page-content">
+        <h1 class="page-title">Khám phá</h1>
+        <p class="page-subtitle">Tìm kiếm những cuốn sách hay nhất dành cho bạn</p>
+
+        <div id="home-main-content" class="hidden">
+          <div id="tag-bar" style="display: flex; gap: 20px; margin-bottom: 30px; padding-bottom: 12px; border-bottom: 1px solid var(--border); overflow-x: auto; white-space: nowrap;">
+            <a href="#" class="home-tag active" data-tag="" style="color: var(--accent-primary); text-decoration: none; font-weight: 700;">Tất cả</a>
+            <a href="#" class="home-tag" data-tag="Công nghệ" style="color: var(--text-secondary); text-decoration: none;">Công nghệ</a>
+            <a href="#" class="home-tag" data-tag="Kinh tế" style="color: var(--text-secondary); text-decoration: none;">Kinh tế</a>
+            <a href="#" class="home-tag" data-tag="Văn học" style="color: var(--text-secondary); text-decoration: none;">Văn học</a>
+          </div>
+
+          <div id="tag-empty" class="empty-state hidden" style="margin-bottom: 24px;">
+            <div class="empty-icon">🏷️</div>
+            <div class="empty-text">Hiện nay chưa có sách thuộc thể loại này.</div>
+            <button class="btn btn-ghost btn-sm" id="btn-reset-filter">Quay lại tất cả sách</button>
+          </div>
+
+          <div id="hero-section"></div>
+
+          <div style="margin-top: 45px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+              <h3 style="font-size: 1.4rem; font-weight: 700; margin: 0;">🔥 Đang thịnh hành</h3>
+            </div>
+            <div id="row-trending" style="display: flex; overflow-x: auto; gap: 25px; padding-bottom: 15px; scroll-snap-type: x mandatory;"></div>
+            <div style="margin-top: 10px;">
+              <button class="btn btn-ghost btn-sm hidden" id="btn-more-trending">Xem thêm sách</button>
+            </div>
+          </div>
+
+          <div style="margin-top: 45px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px;">
+              <h3 style="font-size: 1.4rem; font-weight: 700; margin: 0;">📚 Gợi ý cho bạn</h3>
+            </div>
+            <div id="row-suggested" style="display: flex; overflow-x: auto; gap: 25px; padding-bottom: 15px; scroll-snap-type: x mandatory;"></div>
+            <div style="margin-top: 10px;">
+              <button class="btn btn-ghost btn-sm hidden" id="btn-more-suggested">Xem thêm sách</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="books-loading" class="page-loading">
+          <div class="spinner spinner-primary"></div> Đang kết nối thư viện...
+        </div>
+        <div id="books-empty" class="empty-state hidden">
+          <div class="empty-icon">📭</div>
+          <div class="empty-text">Hiện tại chưa có sách nào trong kho</div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let allBooks = [];
+    let purchasedBookIds = new Set();
+    let currentTag = '';
+    let trendingLimit = 12;
+    let suggestedLimit = 12;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await initHomePage();
+    });
+
+    async function initHomePage() {
+      const loading = document.getElementById('books-loading');
+      const empty = document.getElementById('books-empty');
+      const main = document.getElementById('home-main-content');
+
+      try {
+        const res = await Api.get(CONFIG.API_BOOKS);
+        if (res.ok) allBooks = await res.json();
+      } catch (e) {
+        console.error('Lỗi tải dữ liệu:', e);
+      }
+
+      // Lấy danh sách sách đã bán và ẩn khỏi trang chủ (cho TẤT CẢ người dùng)
+      try {
+        const sRes = await Api.get('/api/transactions/sold');
+        if (sRes.ok) {
+          const soldIds = await sRes.json();
+          const soldSet = new Set(soldIds);
+          allBooks = allBooks.filter(b => !soldSet.has(b.id));
+        }
+      } catch (e) {
+        console.error('Lỗi tải sách đã bán:', e);
+      }
+
+      // Tải danh sách sách đã mua (để biết, dù hiện tại sách đã bị ẩn khỏi trang chủ)
+      if (Auth.isLoggedIn() && !Auth.isAdmin()) {
+        try {
+          const pRes = await Api.get('/api/transactions/purchased');
+          if (pRes.ok) {
+            const purchased = await pRes.json();
+            purchasedBookIds = new Set(purchased.map(p => p.id));
+          }
+        } catch (e) {
+          console.error('Lỗi tải sách đã mua:', e);
+        }
+      }
+
+      loading.classList.add('hidden');
+
+      if (!allBooks.length) {
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      main.classList.remove('hidden');
+      bindTagFilter();
+      bindLoadMore();
+      applyFilter('');
+    }
+
+    function bindTagFilter() {
+      document.querySelectorAll('.home-tag').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          applyFilter(link.getAttribute('data-tag') || '');
+        });
+      });
+      document.getElementById('btn-reset-filter').addEventListener('click', () => applyFilter(''));
+    }
+
+    function bindLoadMore() {
+      document.getElementById('btn-more-trending').addEventListener('click', () => { trendingLimit += 12; refreshRows(); });
+      document.getElementById('btn-more-suggested').addEventListener('click', () => { suggestedLimit += 12; refreshRows(); });
+    }
+
+
+
+    function applyFilter(tag) {
+      currentTag = tag;
+      trendingLimit = 12;
+      suggestedLimit = 12;
+
+      document.querySelectorAll('.home-tag').forEach((link) => {
+        const active = (link.getAttribute('data-tag') || '') === tag;
+        link.style.color = active ? 'var(--accent-primary)' : 'var(--text-secondary)';
+        link.style.fontWeight = active ? '700' : '500';
+      });
+
+      const filtered = getFilteredBooks();
+
+      // Nếu không có sách nào (đã mua hết) → ẩn main, hiện empty state
+      if (allBooks.length === 0) {
+        document.getElementById('home-main-content').classList.add('hidden');
+        document.getElementById('books-empty').classList.remove('hidden');
+        return;
+      }
+
+      // Chỉ hiện tag-empty khi đang lọc theo tag cụ thể mà không có kết quả
+      const isTagEmpty = tag && filtered.length === 0;
+      document.getElementById('tag-empty').classList.toggle('hidden', !isTagEmpty);
+      document.getElementById('hero-section').classList.toggle('hidden', filtered.length === 0);
+      refreshRows();
+      if (filtered.length > 0) renderHero(filtered[0]);
+    }
+
+    function getFilteredBooks() {
+      if (!currentTag) return allBooks;
+      const normalized = currentTag.toLowerCase();
+      return allBooks.filter((b) => (b.genres || '').toLowerCase().includes(normalized));
+    }
+
+    function refreshRows() {
+      const filtered = getFilteredBooks();
+      renderBookCards('row-trending', filtered.slice(0, trendingLimit));
+      renderBookCards('row-suggested', filtered.slice().reverse().slice(0, suggestedLimit));
+      document.getElementById('btn-more-trending').classList.toggle('hidden', trendingLimit >= filtered.length);
+      document.getElementById('btn-more-suggested').classList.toggle('hidden', suggestedLimit >= filtered.length);
+    }
+
+    function renderHero(book) {
+      const container = document.getElementById('hero-section');
+      if (!book) { container.innerHTML = ''; return; }
+      const safeTitle = escapeHtml(book.title).replace(/'/g, "\\'");
+      container.innerHTML = `
+        <div style="display:flex;gap:30px;background:var(--bg-card);padding:35px;border-radius:15px;box-shadow:0 5px 20px rgba(0,0,0,0.08);flex-wrap:wrap;align-items:center;cursor:pointer;" onclick="openBookDetail(${book.id})">
+          <img src="${escapeHtml(book.coverUrl || '/images/placeholder-book.svg')}" onerror="this.onerror=null;this.src='/images/placeholder-book.svg';" style="width:200px;height:280px;object-fit:cover;border-radius:8px;box-shadow:5px 5px 15px rgba(0,0,0,0.2);">
+          <div style="flex:1;min-width:300px;">
+            <span style="color:var(--accent-primary);font-weight:800;font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;">Cuốn sách của tuần</span>
+            <h2 style="font-size:2.2rem;margin:15px 0 10px;line-height:1.3;">${escapeHtml(book.title)}</h2>
+            <p style="color:var(--text-secondary);font-size:1.1rem;margin-bottom:25px;">Tác giả: <strong>${escapeHtml(book.author || 'Đang cập nhật')}</strong></p>
+            <div style="display:flex;align-items:center;gap:30px;">
+              <span style="font-size:1.8rem;font-weight:800;color:var(--text-primary);">${formatPrice(book.price)}</span>
+              ${purchasedBookIds.has(book.id)
+                ? `<span class="btn btn-ghost btn-lg" style="padding:12px 32px;font-weight:600;cursor:default;color:var(--accent-primary);border:2px solid var(--accent-primary);">✅ Đã mua</span>`
+                : `<button class="btn btn-primary btn-lg" style="padding:12px 32px;font-weight:600;" onclick="event.stopPropagation(); handlePurchase(${book.id}, ${book.price ?? 0}, '${safeTitle}')">Mua ngay</button>`}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderBookCards(containerId, list) {
+      const isAdmin = Auth.isAdmin();
+      document.getElementById(containerId).innerHTML = list.map((b) => {
+        const safeTitle = escapeHtml(b.title).replace(/'/g, "\\'");
+        const isPurchased = purchasedBookIds.has(b.id);
+        let buyBtn = '';
+        if (!isAdmin) {
+          buyBtn = isPurchased
+            ? `<span class="btn btn-ghost btn-sm" style="cursor:default;color:var(--accent-primary);border:1.5px solid var(--accent-primary);font-weight:700;" title="Đã mua">✅ Đã mua</span>`
+            : `<button class="btn btn-primary btn-sm" onclick="event.stopPropagation(); handlePurchase(${b.id}, ${b.price ?? 0}, '${safeTitle}')" title="Mua">🛒 Mua</button>`;
+        }
+
+        return `
+        <div style="min-width:170px;flex:0 0 170px;scroll-snap-align:start;cursor:pointer;" onclick="openBookDetail(${b.id})">
+          <div style="position:relative;overflow:hidden;border-radius:10px;height:240px;margin-bottom:12px;box-shadow:0 4px 10px rgba(0,0,0,0.1);">
+            <img src="${escapeHtml(b.coverUrl || '/images/placeholder-book.svg')}" onerror="this.onerror=null;this.src='/images/placeholder-book.svg';" style="width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+          </div>
+          <h4 style="font-size:0.95rem;font-weight:700;margin-bottom:4px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.4;height:2.7rem;">${escapeHtml(b.title)}</h4>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px;">${escapeHtml(b.author || '...')}</p>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:700;color:var(--text-primary);font-size:1.1rem;">${formatPrice(b.price)}</span>
+            <div style="display:flex;gap:6px;">
+              ${buyBtn}
+              <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); openBookDetail(${b.id})" title="Xem chi tiết">Chi tiết</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+
+
+    async function handlePurchase(id, price, title) {
+      if (!Auth.isLoggedIn()) {
+        await Auth.promptLoginRequired(`mua cuốn sách <strong>${title}</strong>`);
+        return;
+      }
+      if (!price || price <= 0) { Toast.error('Sách chưa có giá hợp lệ để thanh toán.'); return; }
+
+      // Đóng popup chi tiết sách trước khi hiện modal xác nhận
+      const detailOverlay = document.getElementById('book-detail-overlay');
+      if (detailOverlay) detailOverlay.remove();
+
+      const confirmed = await Modal.confirm('Xác nhận mua sách',
+        `Bạn có chắc chắn muốn mua cuốn <strong>${title}</strong> với giá <strong>${formatPrice(price)}</strong> không?`);
+      if (!confirmed) return;
+
+      try {
+        const res = await Api.post('/api/transactions', { bookId: id, type: 0 });
+        if (res.ok) {
+          Toast.success('Mua sách thành công! 🎉 Sách đã được thêm vào tủ sách của bạn.');
+          // Đánh dấu sách đã mua và cập nhật giao diện (ẩn sách khỏi trang chủ)
+          purchasedBookIds.add(id);
+          allBooks = allBooks.filter(b => b.id !== id);
+          applyFilter(currentTag);
+        } else {
+          const errData = await res.json().catch(() => null);
+          Toast.error(errData?.message || 'Thanh toán thất bại, vui lòng kiểm tra số dư và thử lại.');
+        }
+      } catch {
+        Toast.error('Thanh toán thất bại, vui lòng kiểm tra số dư và thử lại.');
+      }
+    }
+
+    function openBookDetail(bookId) {
+      const book = allBooks.find(b => b.id === bookId);
+      if (!book) { Toast.error('Không tìm thấy thông tin sách.'); return; }
+
+      const existing = document.getElementById('book-detail-overlay');
+      if (existing) existing.remove();
+
+      const genres = (book.genres || '').split(',').map(g => g.trim()).filter(Boolean);
+      const genreTags = genres.map(g => `<span class="bd-genre-tag">${escapeHtml(g)}</span>`).join('');
+      const pageCount = book.pageCount || null;
+      const readHrs = pageCount ? Math.round(pageCount / 40) : null;
+      const wordCount = pageCount ? Math.round(pageCount * 250) : null;
+      const description = book.description || '';
+      const isLogged = Auth.isLoggedIn();
+      const isAdmin = Auth.isAdmin();
+      const publishDate = book.publishDate ? new Date(book.publishDate).toLocaleDateString('vi-VN') : null;
+      const safeTitle = escapeHtml(book.title).replace(/'/g, "\\'");
+
+      let buySection = '';
+      const isOwned = purchasedBookIds.has(book.id);
+      if (isLogged && !isAdmin && isOwned) {
+        buySection = `
+          <div class="bd-buy-box">
+            <div class="bd-buy-header">Sách của bạn</div>
+            <div class="bd-price-row"><span class="bd-price-label">Giá đã mua</span><span class="bd-price-value">${formatPrice(book.price)}</span></div>
+            <span class="btn btn-ghost btn-block bd-buy-btn" style="cursor:default;color:var(--accent-primary);border:2px solid var(--accent-primary);font-weight:700;text-align:center;">✅ Đã mua</span>
+          </div>`;
+      } else if (isLogged && !isAdmin) {
+        buySection = `
+          <div class="bd-buy-box">
+            <div class="bd-buy-header">Mua eBook</div>
+            <div class="bd-price-row"><span class="bd-price-label">Giá bán</span><span class="bd-price-value">${formatPrice(book.price)}</span></div>
+            <button class="btn btn-primary btn-block bd-buy-btn" onclick="handlePurchase(${book.id}, ${book.price ?? 0}, '${safeTitle}')">🛒 Mua ngay</button>
+          </div>`;
+      } else if (!isLogged) {
+        buySection = `
+          <div class="bd-buy-box">
+            <div class="bd-buy-header">Mua eBook</div>
+            <div class="bd-price-row"><span class="bd-price-label">Giá bán</span><span class="bd-price-value">${formatPrice(book.price)}</span></div>
+            <button class="btn btn-primary btn-block bd-buy-btn" onclick="handlePurchase(${book.id}, ${book.price ?? 0}, '${safeTitle}')">🛒 Mua ngay</button>
+          </div>`;
+      } else {
+        buySection = `
+          <div class="bd-buy-box">
+            <div class="bd-buy-header">Thông tin giá</div>
+            <div class="bd-price-row"><span class="bd-price-label">Giá bán</span><span class="bd-price-value">${formatPrice(book.price)}</span></div>
+            <button class="btn btn-secondary btn-block bd-buy-btn" onclick="editBook(${book.id})">✏️ Chỉnh sửa sách</button>
+          </div>`;
+      }
+
+      const overlay = document.createElement('div');
+      overlay.id = 'book-detail-overlay';
+      overlay.className = 'bd-overlay';
+      overlay.innerHTML = `
+        <div class="bd-container">
+          <button class="bd-close" onclick="document.getElementById('book-detail-overlay').remove()" title="Đóng">✕</button>
+          <div class="bd-content">
+            <div class="bd-left">
+              <div class="bd-cover-wrapper">
+                <img src="${escapeHtml(book.coverUrl || '/images/placeholder-book.svg')}" onerror="this.onerror=null;this.src='/images/placeholder-book.svg';" alt="${escapeHtml(book.title)}" class="bd-cover-img" />
+              </div>
+            </div>
+            <div class="bd-middle">
+              <h1 class="bd-title">${escapeHtml(book.title)}</h1>
+              <p class="bd-author">bởi <strong>${escapeHtml(book.author || 'Đang cập nhật')}</strong></p>
+              ${genreTags ? `<div class="bd-genres">${genreTags}</div>` : ''}
+              ${book.isbn ? `<p class="bd-isbn">ISBN: ${escapeHtml(book.isbn)}</p>` : ''}
+              ${publishDate ? `<p class="bd-publish-date">📅 Ngày xuất bản: ${publishDate}</p>` : ''}
+              <div class="bd-price-inline">${formatPrice(book.price)}</div>
+              ${description ? `
+                <div class="bd-synopsis">
+                  <h3 class="bd-section-title">Tóm tắt nội dung</h3>
+                  <p class="bd-synopsis-text">${escapeHtml(description)}</p>
+                </div>` : ''}
+              ${pageCount ? `
+                <div class="bd-about">
+                  <h3 class="bd-section-title">Về cuốn sách này</h3>
+                  <div class="bd-stats">
+                    <div class="bd-stat"><div class="bd-stat-icon">📄</div><div class="bd-stat-value">${pageCount}</div><div class="bd-stat-label">Trang</div></div>
+                    ${readHrs ? `<div class="bd-stat"><div class="bd-stat-icon">⏱️</div><div class="bd-stat-value">${readHrs > 1 ? (readHrs-1) + ' - ' + readHrs : '< 1'}</div><div class="bd-stat-label">Giờ đọc</div></div>` : ''}
+                    ${wordCount ? `<div class="bd-stat"><div class="bd-stat-icon">📝</div><div class="bd-stat-value">${(wordCount/1000).toFixed(0)}k</div><div class="bd-stat-label">Tổng từ</div></div>` : ''}
+                  </div>
+                </div>` : ''}
+            </div>
+            <div class="bd-right">${buySection}</div>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => overlay.classList.add('active'));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+      document.addEventListener('keydown', escHandler);
+    }
+  </script>
+</body>
+</html>
+

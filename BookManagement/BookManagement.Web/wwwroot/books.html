@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Danh sách tất cả sách trong hệ thống Book Management." />
+  <title>Danh sách sách</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="main-content">
+      <header class="top-header" id="top-header"></header>
+
+      <main class="page-content">
+        <h1 class="page-title">📖 Sách</h1>
+        <p class="page-subtitle">Tất cả sách có trong hệ thống</p>
+
+        <div class="table-wrapper">
+          <div class="table-header">
+            <span class="table-title" id="books-count">Đang tải...</span>
+            <div class="table-actions">
+              <div class="search-wrapper">
+                <input type="text" class="search-input" id="search-input" placeholder="Tìm kiếm sách..." />
+              </div>
+              <a href="/add-book.html" class="btn btn-primary btn-sm hidden" id="btn-add-book">➕ Thêm Sách Mới</a>
+            </div>
+          </div>
+
+          <div id="books-loading" class="page-loading">
+            <div class="spinner spinner-primary"></div> Đang tải danh sách sách...
+          </div>
+
+          <div id="books-empty" class="empty-state hidden">
+            <div class="empty-icon">📚</div>
+            <div class="empty-text">Chưa có sách nào trong hệ thống</div>
+          </div>
+
+          <table id="books-table" class="hidden">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Ảnh</th>
+                <th>Tiêu đề</th>
+                <th>Tác giả</th>
+                <th>Thể loại</th>
+                <th>Giá</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="books-tbody"></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let allBooks = [];
+    let soldBookIds = new Set();
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!Auth.isAdmin()) {
+        window.location.href = '/';
+        return;
+      }
+      document.getElementById('btn-add-book').classList.remove('hidden');
+      await loadSoldStatus();
+      await loadBooks();
+      document.getElementById('search-input').addEventListener('input', (e) => {
+        const q = e.target.value.toLowerCase();
+        const filtered = allBooks.filter(b =>
+          b.title.toLowerCase().includes(q) ||
+          b.author.toLowerCase().includes(q) ||
+          (b.genres || '').toLowerCase().includes(q) ||
+          (b.isbn || '').toLowerCase().includes(q)
+        );
+        renderBooks(filtered);
+      });
+    });
+
+    async function loadSoldStatus() {
+      try {
+        const res = await Api.get('/api/transactions/all');
+        if (res.ok) {
+          const transactions = await res.json();
+          // Type 0 = Buy
+          soldBookIds = new Set(
+            transactions
+              .filter(t => t.type === 0 && t.bookId != null)
+              .map(t => t.bookId)
+          );
+        }
+      } catch (e) {
+        console.error('Lỗi tải trạng thái bán:', e);
+      }
+    }
+
+    async function loadBooks() {
+      try {
+        const res = await Api.get(CONFIG.API_BOOKS);
+        if (!res.ok) throw new Error('Failed to load books');
+        allBooks = await res.json();
+        renderBooks(allBooks);
+      } catch (err) {
+        Toast.error('Lỗi khi tải danh sách sách: ' + err.message);
+        document.getElementById('books-loading').classList.add('hidden');
+      }
+    }
+
+    function renderBooks(books) {
+      const loading = document.getElementById('books-loading');
+      const table = document.getElementById('books-table');
+      const tbody = document.getElementById('books-tbody');
+      const empty = document.getElementById('books-empty');
+      const count = document.getElementById('books-count');
+
+      loading.classList.add('hidden');
+
+      if (books.length === 0) {
+        table.classList.add('hidden');
+        empty.classList.remove('hidden');
+        count.textContent = 'Không có sách';
+        return;
+      }
+
+      empty.classList.add('hidden');
+      table.classList.remove('hidden');
+      count.textContent = `${books.length} cuốn sách`;
+
+      tbody.innerHTML = books.map(book => {
+        const genres = (book.genres || '').split(',').map(g => g.trim()).filter(Boolean);
+        const genreTags = genres.map(g => `<span class="genre-tag">${escapeHtml(g)}</span>`).join('');
+        const coverImg = book.coverUrl
+          ? `<img src="${escapeHtml(book.coverUrl)}" alt="${escapeHtml(book.title)}" class="book-cover-thumb" style="cursor:pointer" onclick="openBookDetail(${book.id})" />`
+          : '<span class="text-muted text-sm">—</span>';
+        const safeTitle = escapeHtml(book.title).replace(/'/g, "\\'");
+
+        return `
+          <tr>
+            <td>${book.id}</td>
+            <td>${coverImg}</td>
+            <td class="book-title-cell" style="cursor:pointer" onclick="openBookDetail(${book.id})">${escapeHtml(book.title)}</td>
+            <td>${escapeHtml(book.author)}</td>
+            <td><div class="genre-tags">${genreTags || '<span class="text-muted">—</span>'}</div></td>
+            <td class="book-price">${formatPrice(book.price)}</td>
+            <td>
+              ${soldBookIds.has(book.id)
+                ? `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;background:rgba(239,68,68,0.12);color:#ef4444;">Đã bán</span>`
+                : `<span style="display:inline-block;padding:4px 12px;border-radius:20px;font-size:0.8rem;font-weight:700;background:rgba(34,197,94,0.12);color:#22c55e;">Còn hàng</span>`
+              }
+            </td>
+            <td><div class="td-actions">
+              <button class="btn btn-secondary btn-sm" onclick="editBook(${book.id})" title="Sửa">✏️ Sửa</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteBook(${book.id}, '${safeTitle}')" title="Xóa">🗑️ Xóa</button>
+              <button class="btn btn-ghost btn-sm" onclick="openBookDetail(${book.id})" title="Xem chi tiết">👁️ Chi tiết</button>
+            </div></td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function editBook(id) {
+      window.location.href = `/edit-book.html?id=${id}`;
+    }
+
+    async function deleteBook(id, title) {
+      const confirmed = await Modal.confirm(
+        'Xác nhận xóa',
+        `Bạn có chắc chắn muốn xóa cuốn sách "<strong>${title}</strong>" không?`,
+        { confirmText: 'Xóa', confirmClass: 'btn-danger' }
+      );
+      if (!confirmed) return;
+      try {
+        const res = await Api.delete(`${CONFIG.API_BOOKS}/${id}`);
+        if (!res.ok) throw new Error('Delete failed');
+        Toast.success('Xóa sách thành công!');
+        await loadBooks();
+      } catch (err) {
+        Toast.error('Lỗi khi xóa sách: ' + err.message);
+      }
+    }
+
+    function openBookDetail(bookId) {
+      const book = allBooks.find(b => b.id === bookId);
+      if (!book) { Toast.error('Không tìm thấy thông tin sách.'); return; }
+
+      const existing = document.getElementById('book-detail-overlay');
+      if (existing) existing.remove();
+
+      const genres = (book.genres || '').split(',').map(g => g.trim()).filter(Boolean);
+      const genreTags = genres.map(g => `<span class="bd-genre-tag">${escapeHtml(g)}</span>`).join('');
+      const pageCount = book.pageCount || null;
+      const readHrs = pageCount ? Math.round(pageCount / 40) : null;
+      const wordCount = pageCount ? Math.round(pageCount * 250) : null;
+      const description = book.description || '';
+      const publishDate = book.publishDate ? new Date(book.publishDate).toLocaleDateString('vi-VN') : null;
+
+      const buySection = `
+        <div class="bd-buy-box">
+          <div class="bd-buy-header">Thông tin giá</div>
+          <div class="bd-price-row"><span class="bd-price-label">Giá bán</span><span class="bd-price-value">${formatPrice(book.price)}</span></div>
+          <button class="btn btn-secondary btn-block bd-buy-btn" onclick="editBook(${book.id})">✏️ Chỉnh sửa sách</button>
+        </div>`;
+
+      const overlay = document.createElement('div');
+      overlay.id = 'book-detail-overlay';
+      overlay.className = 'bd-overlay';
+      overlay.innerHTML = `
+        <div class="bd-container">
+          <button class="bd-close" onclick="document.getElementById('book-detail-overlay').remove()" title="Đóng">✕</button>
+          <div class="bd-content">
+            <div class="bd-left">
+              <div class="bd-cover-wrapper">
+                <img src="${escapeHtml(book.coverUrl || '/images/placeholder-book.svg')}" onerror="this.onerror=null;this.src='/images/placeholder-book.svg';" alt="${escapeHtml(book.title)}" class="bd-cover-img" />
+              </div>
+            </div>
+            <div class="bd-middle">
+              <h1 class="bd-title">${escapeHtml(book.title)}</h1>
+              <p class="bd-author">bởi <strong>${escapeHtml(book.author || 'Đang cập nhật')}</strong></p>
+              ${genreTags ? `<div class="bd-genres">${genreTags}</div>` : ''}
+              ${book.isbn ? `<p class="bd-isbn">ISBN: ${escapeHtml(book.isbn)}</p>` : ''}
+              ${publishDate ? `<p class="bd-publish-date">📅 Ngày xuất bản: ${publishDate}</p>` : ''}
+              <div class="bd-price-inline">${formatPrice(book.price)}</div>
+              ${description ? `
+                <div class="bd-synopsis">
+                  <h3 class="bd-section-title">Tóm tắt nội dung</h3>
+                  <p class="bd-synopsis-text">${escapeHtml(description)}</p>
+                </div>` : ''}
+              ${pageCount ? `
+                <div class="bd-about">
+                  <h3 class="bd-section-title">Về cuốn sách này</h3>
+                  <div class="bd-stats">
+                    <div class="bd-stat"><div class="bd-stat-icon">📄</div><div class="bd-stat-value">${pageCount}</div><div class="bd-stat-label">Trang</div></div>
+                    ${readHrs ? `<div class="bd-stat"><div class="bd-stat-icon">⏱️</div><div class="bd-stat-value">${readHrs > 1 ? (readHrs-1)+' - '+readHrs : '< 1'}</div><div class="bd-stat-label">Giờ đọc</div></div>` : ''}
+                    ${wordCount ? `<div class="bd-stat"><div class="bd-stat-icon">📝</div><div class="bd-stat-value">${(wordCount/1000).toFixed(0)}k</div><div class="bd-stat-label">Tổng từ</div></div>` : ''}
+                  </div>
+                </div>` : ''}
+            </div>
+            <div class="bd-right">${buySection}</div>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      requestAnimationFrame(() => overlay.classList.add('active'));
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+      const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+      document.addEventListener('keydown', escHandler);
+    }
+  </script>
+</body>
+</html>
+

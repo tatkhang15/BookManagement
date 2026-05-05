@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sửa Sách</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <div class="main-content">
+      <header class="top-header" id="top-header"></header>
+
+      <main class="page-content">
+        <h1 class="page-title">✏️ Sửa Thông Tin Sách</h1>
+        <p class="page-subtitle">Cập nhật thông tin chi tiết của sách</p>
+
+        <div class="form-container">
+          <div class="form-card">
+            <form id="edit-book-form" novalidate>
+              <div class="form-group">
+                <label class="form-label" for="title">Tiêu đề <span style="color:var(--error)">*</span></label>
+                <input type="text" class="form-control" id="title" required />
+                <div class="form-error hidden" id="title-error">Tiêu đề là bắt buộc!</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="author">Tác giả <span style="color:var(--error)">*</span></label>
+                <input type="text" class="form-control" id="author" required />
+                <div class="form-error hidden" id="author-error">Tác giả là bắt buộc!</div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Thể loại</label>
+                <div id="genre-selector"></div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="isbn">ISBN</label>
+                  <input type="text" class="form-control" id="isbn" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="price">Giá (VNĐ)</label>
+                  <input type="number" class="form-control" id="price" min="0" />
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="publish-date">Ngày xuất bản</label>
+                  <input type="date" class="form-control" id="publish-date" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="page-count">Số trang</label>
+                  <input type="number" class="form-control" id="page-count" placeholder="Nhập số trang" min="1" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="description">Mô tả / Tóm tắt nội dung</label>
+                <textarea class="form-control" id="description" rows="4" placeholder="Nhập tóm tắt nội dung sách..."></textarea>
+              </div>
+
+              <div class="form-group">
+                <label class="form-label">Ảnh bìa sách (Tải lên ảnh mới sẽ thay thế ảnh cũ)</label>
+                <div class="file-upload">
+                  <div class="file-upload-area" id="upload-area">
+                    <div class="upload-icon">📁</div>
+                    <div class="upload-text"><strong>Bấm để chọn</strong> hoặc kéo thả ảnh vào đây</div>
+                  </div>
+                  <input type="file" id="cover-file" accept=".png,.jpg,.jpeg" />
+                  <div class="file-preview hidden" id="file-preview">
+                    <img id="preview-img" alt="Preview" />
+                    <span id="preview-name"></span>
+                    <button type="button" class="btn btn-danger btn-sm" id="remove-file" style="margin-left:auto">✕</button>
+                  </div>
+                  <div id="current-cover" style="margin-top: 10px;">
+                    <img id="current-cover-img" style="max-width: 100px; border-radius: 4px;" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-card-actions">
+                <a href="/" class="btn btn-ghost">Huỷ</a>
+                <button type="submit" class="btn btn-primary" id="btn-submit">
+                  Cập nhật Sách
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    let genreSelector;
+    let selectedFile = null;
+    let bookId = null;
+    let currentCoverUrl = '';
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!Auth.requireAdmin()) return;
+
+      const urlParams = new URLSearchParams(window.location.search);
+      bookId = urlParams.get('id');
+
+      if (!bookId) {
+        Toast.error('Không tìm thấy ID sách.');
+        window.location.href = '/';
+        return;
+      }
+
+      setupFileUpload();
+      await loadBookDetails();
+      setupForm();
+    });
+
+    async function loadBookDetails() {
+      try {
+        const res = await Api.get(`${CONFIG.API_BOOKS}/${bookId}`);
+        if (!res.ok) throw new Error('Không thể tải thông tin sách.');
+        const book = await res.json();
+
+        document.getElementById('title').value = book.title || '';
+        document.getElementById('author').value = book.author || '';
+        document.getElementById('isbn').value = book.isbn || '';
+        document.getElementById('price').value = book.price || '';
+        document.getElementById('description').value = book.description || '';
+        document.getElementById('page-count').value = book.pageCount || '';
+        
+        currentCoverUrl = book.coverUrl || '';
+        if (currentCoverUrl) {
+          document.getElementById('current-cover-img').src = currentCoverUrl;
+        } else {
+          document.getElementById('current-cover').classList.add('hidden');
+        }
+
+        const genres = (book.genres || '').split(',').map(g => g.trim()).filter(Boolean);
+        genreSelector = new GenreSelector('genre-selector', genres);
+      } catch (err) {
+        Toast.error(err.message);
+      }
+    }
+
+    function setupFileUpload() {
+      const area = document.getElementById('upload-area');
+      const input = document.getElementById('cover-file');
+      const preview = document.getElementById('file-preview');
+      const previewImg = document.getElementById('preview-img');
+      const previewName = document.getElementById('preview-name');
+      const removeBtn = document.getElementById('remove-file');
+
+      area.addEventListener('click', () => input.click());
+
+      input.addEventListener('change', () => {
+        if (input.files.length > 0) {
+          handleFile(input.files[0]);
+        }
+      });
+
+      removeBtn.addEventListener('click', () => {
+        selectedFile = null;
+        preview.classList.add('hidden');
+        area.classList.remove('hidden');
+        input.value = '';
+      });
+
+      function handleFile(file) {
+        selectedFile = file;
+        previewName.textContent = file.name;
+        previewImg.src = URL.createObjectURL(file);
+        preview.classList.remove('hidden');
+        area.classList.add('hidden');
+        document.getElementById('current-cover').classList.add('hidden');
+      }
+    }
+
+    function setupForm() {
+      const form = document.getElementById('edit-book-form');
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const title = document.getElementById('title').value.trim();
+        const author = document.getElementById('author').value.trim();
+        let valid = true;
+
+        if (!title) {
+          document.getElementById('title-error').classList.remove('hidden');
+          valid = false;
+        } else {
+          document.getElementById('title-error').classList.add('hidden');
+        }
+
+        if (!author) {
+          document.getElementById('author-error').classList.remove('hidden');
+          valid = false;
+        } else {
+          document.getElementById('author-error').classList.add('hidden');
+        }
+
+        if (!valid) return;
+
+        const btn = document.getElementById('btn-submit');
+        btn.disabled = true;
+        btn.innerHTML = '<div class="spinner"></div> Đang lưu...';
+
+        try {
+          let coverUrl = currentCoverUrl;
+          if (selectedFile) {
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+            const uploadRes = await Api.postForm(CONFIG.API_UPLOAD, formData);
+            if (!uploadRes.ok) {
+              const err = await readApiError(uploadRes, 'Tải ảnh thất bại.');
+              throw new Error('Lỗi tải ảnh: ' + err);
+            }
+            const uploadData = await uploadRes.json();
+            coverUrl = uploadData.url;
+          }
+
+          const isbn = document.getElementById('isbn').value.trim();
+          const price = document.getElementById('price').value;
+          const description = document.getElementById('description').value.trim();
+          const pageCount = document.getElementById('page-count').value;
+
+          const bookData = {
+            title,
+            author,
+            genres: genreSelector.getSelectedString(),
+            isbn: isbn || '',
+            price: price ? parseFloat(price) : null,
+            coverUrl: coverUrl,
+            description: description || '',
+            pageCount: pageCount ? parseInt(pageCount) : null
+          };
+
+          const res = await Api.put(`${CONFIG.API_BOOKS}/${bookId}`, bookData);
+          if (!res.ok) {
+            const err = await readApiError(res, 'Cập nhật sách thất bại.');
+            throw new Error(err);
+          }
+
+          Toast.success('Cập nhật sách thành công!');
+          setTimeout(() => window.location.href = '/', 1500);
+        } catch (err) {
+          Toast.error(err.message);
+          btn.disabled = false;
+          btn.textContent = 'Cập nhật Sách';
+        }
+      });
+    }
+  </script>
+</body>
+</html>

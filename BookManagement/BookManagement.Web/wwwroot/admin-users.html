@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quản lý Người dùng</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar" id="sidebar"></aside>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+    <div class="main-content">
+      <header class="top-header" id="top-header"></header>
+      <main class="page-content">
+        <h1 class="page-title">👥 Quản lý Người dùng</h1>
+        <p class="page-subtitle">Xem danh sách user, khóa tài khoản và lịch sử hoạt động.</p>
+        <div class="table-wrapper">
+          <div class="table-header">
+            <span class="table-title" id="users-count">Đang tải...</span>
+          </div>
+
+          <div id="users-loading" class="page-loading">
+            <div class="spinner spinner-primary"></div> Đang tải danh sách người dùng...
+          </div>
+
+          <div id="users-empty" class="empty-state hidden">
+            <div class="empty-icon">👥</div>
+            <div class="empty-text">Chưa có người dùng nào trên hệ thống</div>
+          </div>
+
+          <table id="users-table" class="hidden">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Tên người dùng</th>
+                <th>Email / Tên hiển thị</th>
+                <th>Quyền</th>
+                <th>Số dư</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      if (!Auth.requireAdmin()) return;
+      await loadUsers();
+    });
+
+    async function loadUsers() {
+      try {
+        const res = await Api.get(CONFIG.API_USERS);
+        if (!res.ok) throw new Error('Không thể tải danh sách người dùng');
+        const users = await res.json();
+        renderUsers(users);
+      } catch (err) {
+        Toast.error('Lỗi: ' + err.message);
+        document.getElementById('users-loading').classList.add('hidden');
+      }
+    }
+
+    function renderUsers(users) {
+      const loading = document.getElementById('users-loading');
+      const table = document.getElementById('users-table');
+      const tbody = document.getElementById('users-tbody');
+      const empty = document.getElementById('users-empty');
+      const count = document.getElementById('users-count');
+
+      loading.classList.add('hidden');
+
+      if (!users || users.length === 0) {
+        table.classList.add('hidden');
+        empty.classList.remove('hidden');
+        count.textContent = '0 người dùng';
+        return;
+      }
+
+      empty.classList.add('hidden');
+      table.classList.remove('hidden');
+      count.textContent = `${users.length} người dùng`;
+
+      tbody.innerHTML = users.map(u => {
+        const roles = (u.roles || []).join(', ');
+        return `
+          <tr>
+            <td>${escapeHtml(u.id)}</td>
+            <td><strong>${escapeHtml(u.userName || '—')}</strong></td>
+            <td>${escapeHtml(u.email || u.fullName || '—')}</td>
+            <td><span class="genre-tag" style="background: var(--accent-primary); color: white;">${escapeHtml(roles || 'User')}</span></td>
+            <td>${formatPrice(u.balance || 0)}</td>
+            <td>
+              <div class="td-actions">
+                <button class="btn btn-secondary btn-sm" onclick='openEditUser(${JSON.stringify(u)})'>Chỉnh sửa</button>
+                <button class="btn btn-warning btn-sm" onclick="upgradeRole('${escapeHtml(u.id)}', 'SubAdmin')">Nâng cấp SubAdmin</button>
+                <button class="btn btn-ghost btn-sm" onclick="upgradeRole('${escapeHtml(u.id)}', 'User')">Hạ quyền User</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function openEditUser(user) {
+      const fullName = prompt('Nhập tên hiển thị mới:', user.fullName || user.userName || '');
+      if (fullName === null) return;
+      const email = prompt('Nhập email mới:', user.email || '');
+      if (email === null) return;
+      const phoneNumber = prompt('Nhập số điện thoại mới:', user.phoneNumber || '');
+      if (phoneNumber === null) return;
+
+      const res = await Api.put(`${CONFIG.API_USERS}/${user.id}`, {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        phoneNumber: phoneNumber.trim()
+      });
+      if (!res.ok) {
+        Toast.error(await res.text());
+        return;
+      }
+      Toast.success('Cập nhật người dùng thành công.');
+      await loadUsers();
+    }
+
+    async function upgradeRole(userId, role) {
+      const res = await Api.put(`${CONFIG.API_USERS}/${userId}/role`, { role });
+      if (!res.ok) {
+        Toast.error(await res.text());
+        return;
+      }
+      Toast.success('Cập nhật quyền thành công.');
+      await loadUsers();
+    }
+  </script>
+</body>
+</html>

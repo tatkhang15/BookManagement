@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Đăng nhập - Book Management</title>
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <style>
+    .auth-container {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg-body);
+      padding: 20px;
+    }
+
+    .auth-card {
+      background: var(--bg-card);
+      width: 100%;
+      max-width: 420px;
+      padding: 40px;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.08);
+      border: 1px solid var(--border);
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .auth-logo {
+      font-size: 3rem;
+      margin-bottom: 10px;
+      display: inline-block;
+    }
+
+    .auth-title {
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: var(--text-primary);
+      margin-bottom: 5px;
+    }
+
+    .auth-subtitle {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body class="app-ready">
+  <div class="auth-container">
+    <div class="auth-card">
+      <div class="auth-header">
+        <a href="/" style="text-decoration: none;"><span class="auth-logo">📚</span></a>
+        <h1 class="auth-title">Chào mừng bạn trở lại</h1>
+        <p class="auth-subtitle">Đăng nhập để tiếp tục khám phá sách hay</p>
+      </div>
+
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div style="margin-bottom: 20px;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 600; color: var(--text-primary);">Email / Tên đăng nhập</label>
+          <input type="text" id="identifier" class="form-control" placeholder="name@example.com" required style="width: 100%; padding: 12px;">
+        </div>
+
+        <div style="margin-bottom: 30px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label style="font-weight: 600; color: var(--text-primary); margin: 0;">Mật khẩu</label>
+            <a href="/forgot-password.html" style="color: var(--accent-primary); font-size: 0.85rem; text-decoration: none; font-weight: 600;">Quên mật khẩu?</a>
+          </div>
+          <input type="password" id="password" class="form-control" placeholder="••••••••" required style="width: 100%; padding: 12px;">
+        </div>
+
+        <button type="submit" id="btn-login" class="btn btn-primary" style="width: 100%; padding: 12px; font-size: 1rem; font-weight: 700;">Đăng nhập</button>
+      </form>
+
+      <div style="text-align: center; margin-top: 25px; font-size: 0.95rem; color: var(--text-secondary);">
+        Chưa có tài khoản? <a href="/register.html" style="color: var(--accent-primary); font-weight: 700; text-decoration: none;">Đăng ký ngay</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const message = new URLSearchParams(window.location.search).get('message');
+      if (message) Toast.success(message);
+    });
+
+    async function handleLogin(e) {
+      e.preventDefault();
+
+      const identifier = document.getElementById('identifier').value.trim();
+      const password = document.getElementById('password').value;
+      const btn = document.getElementById('btn-login');
+
+      if (!identifier || !password) {
+        Toast.error('Vui lòng điền đầy đủ tài khoản và mật khẩu!');
+        return;
+      }
+
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner spinner-sm"></span> Đang xử lý...';
+
+      try {
+        const res = await Api.post(CONFIG.AUTH_LOGIN, { identifier, password });
+
+        if (res.ok) {
+          const data = await res.json();
+          const user = Auth.parseToken(data.token);
+
+          if (!user) {
+            throw new Error('Dữ liệu xác thực không hợp lệ');
+          }
+
+          Auth.setSession(data.token, user);
+          Toast.success('Đăng nhập thành công!');
+
+          const returnUrl = new URLSearchParams(window.location.search).get('returnUrl') || '/';
+          setTimeout(() => window.location.href = returnUrl, 800);
+        } else {
+          const message = await readApiError(res, 'Sai tài khoản hoặc mật khẩu. Vui lòng thử lại!');
+          Toast.error(message);
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
+      } catch (error) {
+        Toast.error('Mạng bị lỗi, không thể kết nối tới máy chủ.');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+  </script>
+</body>
+</html>

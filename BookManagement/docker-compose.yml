@@ -1,0 +1,19 @@
+# PostgreSQL local — cùng engine với Supabase; dev không cần internet.
+# Chạy: docker compose up -d
+# Sau đó: dotnet ef database update --project BookManagement.Infrastructure --startup-project BookManagement.Api
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bookmanagement-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bookmanagement
+    ports:
+      - "5432:5432"
+    volumes:
+      - bookmanagement_pgdata:/var/lib/postgresql/data
+
+volumes:
+  bookmanagement_pgdata:
