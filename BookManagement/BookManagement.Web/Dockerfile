@@ -12,6 +12,7 @@ RUN dotnet restore BookManagement.Web/BookManagement.Web.csproj
 
 # Copy the rest of the code
 COPY . .
+RUN rm -f global.json
 
 # Build and publish
 WORKDIR /src/BookManagement.Web
