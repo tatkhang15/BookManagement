@@ -10,6 +10,8 @@ public static class ChatEndpoints
 {
     private static readonly ConcurrentDictionary<string, (DateTime timestamp, string response)> _cache = new();
     private static readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);
+
+    private sealed record BookLite(string Title, string Author, string Genres, decimal? Price, int? PageCount);
     
     public static IEndpointRouteBuilder MapChatEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -42,14 +44,12 @@ public static class ChatEndpoints
                 .AsNoTracking()
                 .OrderByDescending(b => b.Id)
                 .Take(5)
-                .Select(b => new
-                {
+                .Select(b => new BookLite(
                     b.Title,
                     b.Author,
                     b.Genres,
                     b.Price,
-                    b.PageCount
-                })
+                    b.PageCount))
                 .ToListAsync();
 
             var bookList = books.Count > 0
@@ -144,7 +144,7 @@ public static class ChatEndpoints
         return endpoints;
     }
 
-    private static string GetFallbackResponse(string message, List<object> books)
+    private static string GetFallbackResponse(string message, List<BookLite> books)
     {
         var lowerMessage = message.ToLowerInvariant();
         
@@ -154,10 +154,7 @@ public static class ChatEndpoints
         if (lowerMessage.Contains("sách") && books.Count > 0)
         {
             var randomBook = books[new Random().Next(books.Count)];
-            var bookDict = randomBook as IDictionary<string, object>;
-            var title = bookDict?["Title"]?.ToString() ?? "sách";
-            var author = bookDict?["Author"]?.ToString() ?? "tác giả";
-            return $"Hiện có sách \"{title}\" của {author}. Bạn quan tâm không? 📖";
+            return $"Hiện có sách \"{randomBook.Title}\" của {randomBook.Author}. Bạn quan tâm không? 📖";
         }
         
         if (lowerMessage.Contains("giá") || lowerMessage.Contains("bao nhiêu"))
