@@ -11,6 +11,10 @@ public static class ChatEndpoints
     private static readonly ConcurrentDictionary<string, (DateTime timestamp, string response)> _cache = new();
     private static readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);
 
+    private static readonly ConcurrentDictionary<string, (DateTime windowStart, int count)> _rateLimit = new();
+    private static readonly TimeSpan _rateLimitWindow = TimeSpan.FromMinutes(1);
+    private const int _maxRequestsPerWindowPerIp = 10;
+
     private sealed record BookLite(string Title, string Author, string Genres, decimal? Price, int? PageCount);
     
     public static IEndpointRouteBuilder MapChatEndpoints(this IEndpointRouteBuilder endpoints)
@@ -19,11 +23,18 @@ public static class ChatEndpoints
             ChatRequest request,
             AppDbContext db,
             IConfiguration config,
-            IHttpClientFactory httpClientFactory) =>
+            IHttpClientFactory httpClientFactory,
+            HttpContext httpContext) =>
         {
             if (string.IsNullOrWhiteSpace(request.Message))
             {
                 return Results.BadRequest(new { reply = "Vui lòng nhập câu hỏi." });
+            }
+
+            var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            if (IsRateLimited(ip))
+            {
+                return Results.Ok(new { reply = "Bạn nhắn hơi nhanh 😅 Bạn chờ 1 chút rồi thử lại nhé." });
             }
 
             // Cache check - trả về câu trả lời đã có nếu trùng câu hỏi
@@ -98,11 +109,16 @@ public static class ChatEndpoints
 
                 if (!response.IsSuccessStatusCode)
                 {
+                    if (response.StatusCode == System.Net.HttpStatusCode.Unauthorized ||
+                        response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+                    {
+                        return Results.Ok(new { reply = "Gemini API Key không hợp lệ hoặc bị chặn quyền. Bạn kiểm tra lại key/quyền truy cập trong Google AI Studio nhé." });
+                    }
+
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
                         // Fallback response khi quá tải
-                        var fallbackResponse = GetFallbackResponse(request.Message, books);
-                        return Results.Ok(new { reply = fallbackResponse });
+                        return Results.Ok(new { reply = "Gemini đang bị giới hạn (429 / hết quota hoặc rate limit). Bạn thử lại sau, hoặc dùng API key khác / tăng quota nhé." });
                     }
                     return Results.Problem($"Gemini API lỗi ({response.StatusCode}): {responseBody}");
                 }
@@ -142,6 +158,33 @@ public static class ChatEndpoints
         }).AllowAnonymous();
 
         return endpoints;
+    }
+
+    private static bool IsRateLimited(string ip)
+    {
+        var now = DateTime.UtcNow;
+        while (true)
+        {
+            if (!_rateLimit.TryGetValue(ip, out var state))
+            {
+                if (_rateLimit.TryAdd(ip, (now, 1)))
+                    return false;
+                continue;
+            }
+
+            if (now - state.windowStart >= _rateLimitWindow)
+            {
+                if (_rateLimit.TryUpdate(ip, (now, 1), state))
+                    return false;
+                continue;
+            }
+
+            if (state.count >= _maxRequestsPerWindowPerIp)
+                return true;
+
+            if (_rateLimit.TryUpdate(ip, (state.windowStart, state.count + 1), state))
+                return false;
+        }
     }
 
     private static string GetFallbackResponse(string message, List<BookLite> books)
