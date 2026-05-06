@@ -166,7 +166,16 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-app.UseStaticFiles(); // Enable serving images from wwwroot
+app.UseStaticFiles(); // Default wwwroot mapping
+
+var imagesPath = Path.Combine(builder.Environment.ContentRootPath, "wwwroot", "images");
+Directory.CreateDirectory(imagesPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(imagesPath),
+    RequestPath = "/api/images"
+});
+
 app.UseCors("AllowWeb");
 app.Use(async (context, next) =>
 {

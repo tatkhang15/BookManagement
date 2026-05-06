@@ -32,22 +32,21 @@ public static class UploadEndpoints
                 return Results.BadRequest(new { message = "Unsupported file type." });
             }
 
-            var webWwwrootPath = Path.Combine(
+            var apiImagesPath = Path.Combine(
                 environment.ContentRootPath,
-                "..",
-                "BookManagement.Web",
                 "wwwroot",
-                "images");
+                "images",
+                "books");
 
-            Directory.CreateDirectory(webWwwrootPath);
+            Directory.CreateDirectory(apiImagesPath);
 
             var fileName = $"{Guid.NewGuid():N}{extension.ToLowerInvariant()}";
-            var filePath = Path.Combine(webWwwrootPath, fileName);
+            var filePath = Path.Combine(apiImagesPath, fileName);
 
             await using var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
             await file.CopyToAsync(stream);
 
-            return Results.Ok(new { url = $"/images/{fileName}" });
+            return Results.Ok(new { url = $"/api/images/books/{fileName}" });
         })
         .DisableAntiforgery()
         .RequireAuthorization("AdminOnly");
