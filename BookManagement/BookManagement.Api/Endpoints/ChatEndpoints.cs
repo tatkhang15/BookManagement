@@ -30,7 +30,7 @@ public static class ChatEndpoints
             var books = await db.Books
                 .AsNoTracking()
                 .OrderByDescending(b => b.Id)
-                .Take(100)
+                .Take(10)
                 .Select(b => new
                 {
                     b.Title,
@@ -93,19 +93,36 @@ public static class ChatEndpoints
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    return Results.Problem($"Gemini API lỗi: {response.StatusCode}");
+                    if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                    {
+                        return Results.Ok(new { reply = "Hệ thống đang quá tải (hết giới hạn API). Vui lòng thử lại sau ít phút nhé! ⏳" });
+                    }
+                    return Results.Problem($"Gemini API lỗi ({response.StatusCode}): {responseBody}");
                 }
 
-                // Parse kết quả từ Gemini
+                // Parse kết quả từ Gemini an toàn hơn
                 using var doc = JsonDocument.Parse(responseBody);
-                var reply = doc.RootElement
-                    .GetProperty("candidates")[0]
-                    .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
-                    .GetString() ?? "Xin lỗi, tôi không thể trả lời lúc này.";
+                var root = doc.RootElement;
+                
+                if (root.TryGetProperty("candidates", out var candidates) && candidates.GetArrayLength() > 0)
+                {
+                    var firstCandidate = candidates[0];
+                    if (firstCandidate.TryGetProperty("content", out var candidateContent) && 
+                        candidateContent.TryGetProperty("parts", out var parts) && 
+                        parts.GetArrayLength() > 0 &&
+                        parts[0].TryGetProperty("text", out var textProp))
+                    {
+                        var reply = textProp.GetString() ?? "Xin lỗi, tôi không thể trả lời lúc này.";
+                        return Results.Ok(new { reply });
+                    }
+                    else if (firstCandidate.TryGetProperty("finishReason", out var finishReason) && 
+                             finishReason.GetString() == "SAFETY")
+                    {
+                        return Results.Ok(new { reply = "Xin lỗi, câu hỏi của bạn có thể chứa nội dung không phù hợp nên tôi không thể trả lời. 😔" });
+                    }
+                }
 
-                return Results.Ok(new { reply });
+                return Results.Ok(new { reply = "Xin lỗi, tôi không thể xử lý câu trả lời từ hệ thống lúc này. Bạn vui lòng thử lại sau nhé. 😔" });
             }
             catch (Exception ex)
             {
