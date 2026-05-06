@@ -2,11 +2,15 @@ using System.Text;
 using System.Text.Json;
 using BookManagement.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore;
+using System.Collections.Concurrent;
 
 namespace BookManagement.Api.Endpoints;
 
 public static class ChatEndpoints
 {
+    private static readonly ConcurrentDictionary<string, (DateTime timestamp, string response)> _cache = new();
+    private static readonly TimeSpan _cacheExpiry = TimeSpan.FromMinutes(5);
+    
     public static IEndpointRouteBuilder MapChatEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapPost("/api/chat", async (
@@ -20,45 +24,46 @@ public static class ChatEndpoints
                 return Results.BadRequest(new { reply = "Vui lòng nhập câu hỏi." });
             }
 
+            // Cache check - trả về câu trả lời đã có nếu trùng câu hỏi
+            var normalizedMessage = request.Message.Trim().ToLowerInvariant();
+            if (_cache.TryGetValue(normalizedMessage, out var cached) && DateTime.Now - cached.timestamp < _cacheExpiry)
+            {
+                return Results.Ok(new { reply = cached.response });
+            }
+
             var apiKey = config["Gemini:ApiKey"];
             if (string.IsNullOrWhiteSpace(apiKey))
             {
                 return Results.Problem("Gemini API Key chưa được cấu hình.");
             }
 
-            // Lấy danh sách sách từ database để Gemini biết kho sách hiện tại
+            // Lấy danh sách sách từ database để Gemini biết kho sách hiện tại (giới hạn 5 sách để giảm token)
             var books = await db.Books
                 .AsNoTracking()
                 .OrderByDescending(b => b.Id)
-                .Take(10)
+                .Take(5)
                 .Select(b => new
                 {
                     b.Title,
                     b.Author,
                     b.Genres,
                     b.Price,
-                    b.Isbn,
-                    b.Description,
                     b.PageCount
                 })
                 .ToListAsync();
 
             var bookList = books.Count > 0
                 ? string.Join("\n", books.Select(b =>
-                    $"- \"{b.Title}\" | Tác giả: {b.Author} | Thể loại: {b.Genres} | Giá: {(b.Price.HasValue ? $"{b.Price:N0} VNĐ" : "Chưa cập nhật")} | Số trang: {b.PageCount?.ToString() ?? "N/A"} | ISBN: {b.Isbn ?? "N/A"} | Mô tả: {(string.IsNullOrWhiteSpace(b.Description) ? "Chưa có" : b.Description)}"))
+                    $"- \"{b.Title}\" | {b.Author} | {b.Genres} | {(b.Price.HasValue ? $"{b.Price:N0}đ" : "Giá chưa cập nhật")}"))
                 : "Hiện tại chưa có sách nào trong hệ thống.";
 
             var systemPrompt = $"""
-                Bạn là trợ lý AI thông minh của hệ thống quản lý sách "Book Management".
-                Bạn thân thiện, nhiệt tình và trả lời bằng tiếng Việt.
+                Bạn là trợ lý AI của hệ thống sách. Trả lời ngắn gọn bằng tiếng Việt.
                 
-                Dưới đây là danh sách sách hiện có trong cửa hàng:
+                Sách có sẵn:
                 {bookList}
                 
-                Hãy trả lời câu hỏi của khách hàng dựa trên danh sách sách trên.
-                Nếu khách hỏi về sách không có trong danh sách, hãy cho biết cửa hàng chưa có sách đó.
-                Nếu khách hỏi chung chung, hãy gợi ý một vài cuốn sách hay từ danh sách.
-                Trả lời ngắn gọn, súc tích, dễ hiểu. Dùng emoji cho sinh động.
+                Trả lời tối đa 50 chữ. Dùng emoji. Nếu không có sách phù hợp, nói rõ.
                 """;
 
             // Gọi Gemini API
@@ -77,8 +82,8 @@ public static class ChatEndpoints
                 },
                 generationConfig = new
                 {
-                    temperature = 0.7,
-                    maxOutputTokens = 1024
+                    temperature = 0.3,
+                    maxOutputTokens = 150
                 }
             };
 
@@ -95,7 +100,9 @@ public static class ChatEndpoints
                 {
                     if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
                     {
-                        return Results.Ok(new { reply = "Hệ thống đang quá tải (hết giới hạn API). Vui lòng thử lại sau ít phút nhé! ⏳" });
+                        // Fallback response khi quá tải
+                        var fallbackResponse = GetFallbackResponse(request.Message, books);
+                        return Results.Ok(new { reply = fallbackResponse });
                     }
                     return Results.Problem($"Gemini API lỗi ({response.StatusCode}): {responseBody}");
                 }
@@ -113,6 +120,10 @@ public static class ChatEndpoints
                         parts[0].TryGetProperty("text", out var textProp))
                     {
                         var reply = textProp.GetString() ?? "Xin lỗi, tôi không thể trả lời lúc này.";
+                        
+                        // Cache response để dùng lại sau
+                        _cache.TryAdd(normalizedMessage, (DateTime.Now, reply));
+                        
                         return Results.Ok(new { reply });
                     }
                     else if (firstCandidate.TryGetProperty("finishReason", out var finishReason) && 
@@ -131,6 +142,25 @@ public static class ChatEndpoints
         }).AllowAnonymous();
 
         return endpoints;
+    }
+
+    private static string GetFallbackResponse(string message, List<dynamic> books)
+    {
+        var lowerMessage = message.ToLowerInvariant();
+        
+        if (lowerMessage.Contains("xin chào") || lowerMessage.Contains("hello"))
+            return "Xin chào! Tôi có thể giúp gì cho bạn về sách? 📚";
+            
+        if (lowerMessage.Contains("sách") && books.Count > 0)
+        {
+            var randomBook = books[new Random().Next(books.Count)];
+            return $"Hiện có sách \"{randomBook.Title}\" của {randomBook.Author}. Bạn quan tâm không? 📖";
+        }
+        
+        if (lowerMessage.Contains("giá") || lowerMessage.Contains("bao nhiêu"))
+            return "Vui lòng cho biết tên sách để tôi báo giá nhé! 💰";
+            
+        return "Xin lỗi, hệ thống đang bận. Bạn thử lại sau ít phút nhé! ⏳";
     }
 
     public record ChatRequest(string Message);
