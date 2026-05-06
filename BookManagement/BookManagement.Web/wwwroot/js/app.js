@@ -421,4 +421,148 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (adminRoutes.includes(window.location.pathname) && !Auth.requireAdmin()) return;
   if (document.getElementById('top-header') || document.getElementById('sidebar')) Nav.init();
   document.body.classList.add('app-ready');
+  Chatbot.init();
 });
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   AI Chatbot Widget (Gemini Pro)
+   ═══════════════════════════════════════════════════════════════════════════ */
+const Chatbot = {
+  isOpen: false,
+  isSending: false,
+
+  init() {
+    // Inject HTML
+    const fab = document.createElement('button');
+    fab.className = 'chatbot-fab';
+    fab.id = 'chatbot-fab';
+    fab.innerHTML = '💬';
+    fab.title = 'Chat với AI';
+    document.body.appendChild(fab);
+
+    const win = document.createElement('div');
+    win.className = 'chatbot-window';
+    win.id = 'chatbot-window';
+    win.innerHTML = `
+      <div class="chatbot-header">
+        <div class="chatbot-header-avatar">🤖</div>
+        <div class="chatbot-header-info">
+          <h4>Trợ lý AI - Book Management</h4>
+          <p>Powered by Gemini Pro ✨</p>
+        </div>
+      </div>
+      <div class="chatbot-messages" id="chatbot-messages">
+        <div class="chat-msg bot">
+          <div class="chat-msg-avatar">🤖</div>
+          <div class="chat-msg-bubble">Xin chào! 👋 Mình là trợ lý AI của Book Management. Bạn muốn tìm sách gì hôm nay?</div>
+        </div>
+      </div>
+      <div class="chatbot-input">
+        <input type="text" id="chatbot-input" placeholder="Nhập câu hỏi..." autocomplete="off" />
+        <button id="chatbot-send" title="Gửi">➤</button>
+      </div>
+    `;
+    document.body.appendChild(win);
+
+    // Events
+    fab.addEventListener('click', () => this.toggle());
+    document.getElementById('chatbot-send').addEventListener('click', () => this.send());
+    document.getElementById('chatbot-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.send(); }
+    });
+  },
+
+  toggle() {
+    this.isOpen = !this.isOpen;
+    document.getElementById('chatbot-window').classList.toggle('open', this.isOpen);
+    const fab = document.getElementById('chatbot-fab');
+    fab.classList.toggle('open', this.isOpen);
+    fab.innerHTML = this.isOpen ? '✕' : '💬';
+    if (this.isOpen) {
+      setTimeout(() => document.getElementById('chatbot-input').focus(), 300);
+    }
+  },
+
+  addMessage(text, role) {
+    const container = document.getElementById('chatbot-messages');
+    const avatar = role === 'bot' ? '🤖' : '👤';
+    const msg = document.createElement('div');
+    msg.className = `chat-msg ${role}`;
+    msg.innerHTML = `
+      <div class="chat-msg-avatar">${avatar}</div>
+      <div class="chat-msg-bubble">${this.formatText(text)}</div>
+    `;
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  showTyping() {
+    const container = document.getElementById('chatbot-messages');
+    const typing = document.createElement('div');
+    typing.className = 'chat-msg bot';
+    typing.id = 'chatbot-typing';
+    typing.innerHTML = `
+      <div class="chat-msg-avatar">🤖</div>
+      <div class="chat-msg-bubble">
+        <div class="chat-typing">
+          <div class="chat-typing-dot"></div>
+          <div class="chat-typing-dot"></div>
+          <div class="chat-typing-dot"></div>
+        </div>
+      </div>
+    `;
+    container.appendChild(typing);
+    container.scrollTop = container.scrollHeight;
+  },
+
+  hideTyping() {
+    const el = document.getElementById('chatbot-typing');
+    if (el) el.remove();
+  },
+
+  formatText(text) {
+    // Convert markdown-style bold **text** and newlines
+    return text
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\n/g, '<br>');
+  },
+
+  async send() {
+    if (this.isSending) return;
+    const input = document.getElementById('chatbot-input');
+    const message = input.value.trim();
+    if (!message) return;
+
+    input.value = '';
+    this.addMessage(message, 'user');
+
+    this.isSending = true;
+    const sendBtn = document.getElementById('chatbot-send');
+    sendBtn.disabled = true;
+    this.showTyping();
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+
+      this.hideTyping();
+
+      if (res.ok) {
+        const data = await res.json();
+        this.addMessage(data.reply || 'Xin lỗi, mình không hiểu câu hỏi.', 'bot');
+      } else {
+        this.addMessage('😔 Xin lỗi, có lỗi xảy ra. Bạn thử lại nhé!', 'bot');
+      }
+    } catch {
+      this.hideTyping();
+      this.addMessage('😔 Không thể kết nối tới máy chủ. Bạn thử lại sau nhé!', 'bot');
+    } finally {
+      this.isSending = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+};

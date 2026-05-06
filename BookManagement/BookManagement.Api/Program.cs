@@ -22,6 +22,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(defaultConnection));
 
 builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient();
 builder.Services.AddTransient<BookManagement.Api.Helpers.IEmailSender, BookManagement.Api.Helpers.SmtpEmailSender>();
 
 // ── Identity ──────────────────────────────────────────────────────────────
@@ -198,6 +199,7 @@ app.UseAuthorization();
 // ── Map Endpoints ─────────────────────────────────────────────────────────
 app.MapAuthEndpoints();
 app.MapBookEndpoints();
+app.MapChatEndpoints();
 app.MapTransactionEndpoints();
 app.MapUploadEndpoints();
 app.MapUserEndpoints();
