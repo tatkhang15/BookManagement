@@ -18,7 +18,8 @@ public static class AuthEndpoints
         auth.MapPost("/register", async (
             RegisterRequest request,
             UserManager<ApplicationUser> userManager,
-            IMemoryCache cache) =>
+            IMemoryCache cache,
+            IEmailSender emailSender) =>
         {
             var validationErrors = request.Validate();
             if (validationErrors is not null)
@@ -65,7 +66,7 @@ public static class AuthEndpoints
             };
             cache.Set(cacheKey, cacheData, TimeSpan.FromMinutes(5));
 
-            MockEmailSender.SendOtpEmail(request.Email, otp);
+            await emailSender.SendEmailAsync(request.Email, "Mã xác thực đăng ký tài khoản", $"Chào {request.FullName},<br><br>Mã xác thực OTP của bạn là: <strong>{otp}</strong><br>Mã này có hiệu lực trong 5 phút. Vui lòng không chia sẻ cho bất kỳ ai.");
 
             return Results.Ok(new { message = "Da gui ma OTP toi email cua ban.", requiresOtp = true });
         });
@@ -160,7 +161,8 @@ public static class AuthEndpoints
         auth.MapPost("/forgot-password", async (
             ForgotPasswordRequest request,
             UserManager<ApplicationUser> userManager,
-            IMemoryCache cache) =>
+            IMemoryCache cache,
+            IEmailSender emailSender) =>
         {
             var validationErrors = request.Validate();
             if (validationErrors is not null)
@@ -174,7 +176,7 @@ public static class AuthEndpoints
             {
                 // To prevent email enumeration, we still pretend to send OTP
                 var dummyOtp = Random.Shared.Next(1000, 10000).ToString("D4");
-                MockEmailSender.SendOtpEmail(request.Email, dummyOtp);
+                await emailSender.SendEmailAsync(request.Email, "Mã xác thực khôi phục mật khẩu", $"Mã xác thực của bạn là: <strong>{dummyOtp}</strong><br>Mã này có hiệu lực trong 5 phút.");
                 return Results.Ok(new { message = "Da gui ma OTP khoi phuc." });
             }
 
@@ -182,7 +184,7 @@ public static class AuthEndpoints
             var cacheKey = $"OTP_Forgot_{request.Email}";
             cache.Set(cacheKey, otp, TimeSpan.FromMinutes(5));
 
-            MockEmailSender.SendOtpEmail(request.Email, otp);
+            await emailSender.SendEmailAsync(request.Email, "Mã xác thực khôi phục mật khẩu", $"Mã xác thực của bạn là: <strong>{otp}</strong><br>Mã này có hiệu lực trong 5 phút.");
 
             return Results.Ok(new { message = "Da gui ma OTP khoi phuc." });
         });

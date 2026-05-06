@@ -22,6 +22,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(defaultConnection));
 
 builder.Services.AddMemoryCache();
+builder.Services.AddTransient<BookManagement.Api.Helpers.IEmailSender, BookManagement.Api.Helpers.SmtpEmailSender>();
 
 // ── Identity ──────────────────────────────────────────────────────────────
 builder.Services
