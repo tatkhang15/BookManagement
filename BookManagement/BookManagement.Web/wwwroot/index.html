@@ -275,6 +275,10 @@
       }
     }
 
+    function editBook(id) {
+      window.location.href = `/edit-book.html?id=${id}`;
+    }
+
     function openBookDetail(bookId) {
       const book = allBooks.find(b => b.id === bookId);
       if (!book) { Toast.error('Không tìm thấy thông tin sách.'); return; }
