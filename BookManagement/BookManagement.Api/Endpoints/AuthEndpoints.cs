@@ -53,7 +53,7 @@ public static class AuthEndpoints
 
             // Generate 4-digit OTP
             var otp = Random.Shared.Next(1000, 10000).ToString("D4");
-            
+
             // Store registration data in cache for 5 minutes
             var cacheKey = $"OTP_Register_{request.Email}";
             var cacheData = new RegisterDataCache

@@ -14,7 +14,7 @@ public static class TransactionEndpoints
         var transactions = endpoints.MapGroup("/api/transactions").RequireAuthorization("UserOrAdmin");
 
         // POST /api/transactions - Mua sách trực tiếp
-        transactions.MapPost("/", async Task<IResult>(
+        transactions.MapPost("/", async Task<IResult> (
             CreateTransactionRequest request,
             ClaimsPrincipal principal,
             AppDbContext db) =>
@@ -98,7 +98,7 @@ public static class TransactionEndpoints
         });
 
         // POST /api/transactions/deposit - Nạp tiền vào ví
-        transactions.MapPost("/deposit", async Task<IResult>(
+        transactions.MapPost("/deposit", async Task<IResult> (
             DepositRequest request,
             ClaimsPrincipal principal,
             AppDbContext db) =>
@@ -134,7 +134,7 @@ public static class TransactionEndpoints
         });
 
         // GET /api/transactions/all - Admin lấy tất cả giao dịch
-        transactions.MapGet("/all", async Task<IResult>(AppDbContext db) =>
+        transactions.MapGet("/all", async Task<IResult> (AppDbContext db) =>
         {
             var transactionsList = await db.Transactions
                 .AsNoTracking()
@@ -157,7 +157,7 @@ public static class TransactionEndpoints
         }).RequireAuthorization("AdminOnly");
 
         // GET /api/transactions/sold - Public, lấy ID các sách đã bán
-        transactions.MapGet("/sold", async Task<IResult>(AppDbContext db) =>
+        transactions.MapGet("/sold", async Task<IResult> (AppDbContext db) =>
         {
             var soldIds = await db.Transactions
                 .Where(t => t.Type == TransactionType.Buy && t.BookId != null)
@@ -168,7 +168,7 @@ public static class TransactionEndpoints
         }).AllowAnonymous();
 
         // GET /api/transactions/purchased - Lấy sách đã mua của user hiện tại
-        transactions.MapGet("/purchased", async Task<IResult>(
+        transactions.MapGet("/purchased", async Task<IResult> (
             ClaimsPrincipal principal,
             AppDbContext db) =>
         {
@@ -209,7 +209,7 @@ public static class TransactionEndpoints
         });
 
         // GET /api/transactions/my - Lịch sử giao dịch của user hiện tại
-        transactions.MapGet("/my", async Task<IResult>(
+        transactions.MapGet("/my", async Task<IResult> (
             ClaimsPrincipal principal,
             AppDbContext db) =>
         {

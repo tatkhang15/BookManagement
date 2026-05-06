@@ -48,7 +48,7 @@ public static class DatabaseSeeder
             };
 
             var result = await userManager.CreateAsync(newAdmin);
-            
+
             if (result.Succeeded)
             {
                 adminUser = newAdmin;
