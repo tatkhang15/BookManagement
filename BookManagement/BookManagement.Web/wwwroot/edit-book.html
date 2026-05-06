@@ -134,6 +134,9 @@
         document.getElementById('price').value = book.price || '';
         document.getElementById('description').value = book.description || '';
         document.getElementById('page-count').value = book.pageCount || '';
+        if (book.publishDate) {
+          document.getElementById('publish-date').value = book.publishDate.split('T')[0];
+        }
         
         currentCoverUrl = book.coverUrl || '';
         if (currentCoverUrl) {
@@ -227,6 +230,7 @@
 
           const isbn = document.getElementById('isbn').value.trim();
           const price = document.getElementById('price').value;
+          const publishDate = document.getElementById('publish-date').value;
           const description = document.getElementById('description').value.trim();
           const pageCount = document.getElementById('page-count').value;
 
@@ -237,6 +241,7 @@
             isbn: isbn || '',
             price: price ? parseFloat(price) : null,
             coverUrl: coverUrl,
+            publishDate: publishDate || null,
             description: description || '',
             pageCount: pageCount ? parseInt(pageCount) : null
           };
