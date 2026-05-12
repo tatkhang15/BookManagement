@@ -1,4 +1,4 @@
-# PostgreSQL local — cùng engine với Supabase; dev không cần internet.
+# PostgreSQL local — dev database.
 # Chạy: docker compose up -d
 # Sau đó: dotnet ef database update --project BookManagement.Infrastructure --startup-project BookManagement.Api
 services:

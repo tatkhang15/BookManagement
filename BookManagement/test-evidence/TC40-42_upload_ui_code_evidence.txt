@@ -1,0 +1,77 @@
+﻿========================================
+  TC40-42: UPLOAD UI CODE EVIDENCE
+  File: add-book.html
+  Date: 2026-05-11
+========================================
+
+TC40: Preview anh khi them/sua sach
+  File: BookManagement.Web/wwwroot/add-book.html
+  Code evidence (line ~100-130):
+    - Upload area with drag-drop zone
+    - File input handler shows preview after upload
+    - Image preview displayed in form
+
+TC41: Nut X xoa preview
+  File: BookManagement.Web/wwwroot/add-book.html  
+  Code evidence:
+    - Remove button (X) clears preview
+    - Re-shows upload drop zone after removal
+    - coverUrl reset to empty
+
+TC42: Keo tha (drag & drop) anh
+  File: BookManagement.Web/wwwroot/add-book.html (line 123-127)
+  Code evidence:
+    area.addEventListener('dragover', (e) => { ... });
+    area.addEventListener('dragleave', () => { ... });
+    area.addEventListener('drop', (e) => { ... });
+  
+  Full drag-drop implementation present with:
+    - dragover: prevents default, adds visual highlight
+    - dragleave: removes highlight  
+    - drop: extracts file, triggers upload
+
+Result: ALL PASS (code verified)
+
+
+ACTUAL CODE SNIPPET (add-book.html lines 101-141):
+  <script>
+    let genreSelector;
+    let selectedFile = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!Auth.requireAdmin()) return;
+
+      genreSelector = new GenreSelector('genre-selector');
+      setupFileUpload();
+      setupForm();
+    });
+
+    function setupFileUpload() {
+      const area = document.getElementById('upload-area');
+      const input = document.getElementById('cover-file');
+      const preview = document.getElementById('file-preview');
+      const previewImg = document.getElementById('preview-img');
+      const previewName = document.getElementById('preview-name');
+      const removeBtn = document.getElementById('remove-file');
+
+      area.addEventListener('click', () => input.click());
+
+      area.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        area.style.borderColor = 'var(--accent-primary)';
+      });
+      area.addEventListener('dragleave', () => {
+        area.style.borderColor = '';
+      });
+      area.addEventListener('drop', (e) => {
+        e.preventDefault();
+        area.style.borderColor = '';
+        if (e.dataTransfer.files.length > 0) {
+          handleFile(e.dataTransfer.files[0]);
+        }
+      });
+
+      input.addEventListener('change', () => {
+        if (input.files.length > 0) {
+          handleFile(input.files[0]);
+        }

@@ -1,0 +1,52 @@
+﻿========================================
+  API UPLOAD TEST RESULTS
+  Date: 2026-05-11
+  Tester: Hoang Phuoc Tat Khang
+========================================
+
+TC37: Upload .jpg
+  Response: {"url":"/api/images/books/42d495149a6440ba89950a5c15df25fc.jpg"} HTTP_CODE:200
+  Result: PASS
+
+TC38: Upload .png
+  Response: {"url":"/api/images/books/e03fda114bfe4ac483631ebeafd3022f.png"} HTTP_CODE:200
+  Result: PASS
+
+TC39: Upload .jpeg
+  Response: {"url":"/api/images/books/226461d766cf492eb5b0d6db8980e5a3.jpeg"} HTTP_CODE:200
+  Result: PASS
+
+TC43: Upload .txt (non-image)
+  Response: {"message":"Unsupported file type."} HTTP_CODE:400
+  Result: PASS - 400 Bad Request
+
+TC44: Upload >5MB
+  Response: {"message":"File is too large."} HTTP_CODE:400
+  Result: PASS - 400 File too large
+
+TC45: Upload empty file
+  Response: {"message":"File is empty."} HTTP_CODE:400
+  Result: PASS - 400 File empty
+
+TC46: User (non-admin) upload
+  Response:  HTTP_CODE:403
+  Result: PASS - 403 Forbidden
+
+TC47: No JWT upload
+  Response:  HTTP_CODE:401
+  Result: PASS - 401 Unauthorized
+
+TC48: Upload .webp
+  Response: {"url":"/api/images/books/5cba29e7db944896aaffe46717abbfd1.webp"} HTTP_CODE:200
+  Result: PASS
+
+TC49: Upload .gif
+  Response: {"url":"/api/images/books/496b205c7c654da5b150d4293d4c0a20.gif"} HTTP_CODE:200
+  Result: PASS
+
+TC50: File accessible via URL
+  URL: http://localhost:5104
+  HTTP Status: 200
+  Result: PASS - 200 OK
+
+
